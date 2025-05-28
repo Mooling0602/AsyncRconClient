@@ -1,7 +1,7 @@
+import asyncio
 import dataclasses
 import struct
 import sys
-import asyncio
 from logging import Logger
 from typing import Optional
 
@@ -25,14 +25,18 @@ class Packet:
     payload: str
 
     def flush(self) -> bytes:
-        data = struct.pack('<ii', self.request_id, self.packet_type) + (self.payload + '\x00\x00').encode('utf8')
-        return struct.pack('<i', len(data)) + data
+        data = struct.pack("<ii", self.request_id, self.packet_type) + (
+            self.payload + "\x00\x00"
+        ).encode("utf8")
+        return struct.pack("<i", len(data)) + data
 
 
 class AsyncRconConnection:
-    BUFFER_SIZE = 2 ** 10
+    BUFFER_SIZE = 2**10
 
-    def __init__(self, address: str, port: int, password: str, *, logger: Optional[Logger] = None):
+    def __init__(
+        self, address: str, port: int, password: str, *, logger: Optional[Logger] = None
+    ):
         self.logger = logger
         self.address = address
         self.port = port
@@ -41,22 +45,39 @@ class AsyncRconConnection:
         self.writer: Optional[asyncio.StreamWriter] = None
         self.lock = asyncio.Lock()
 
-    async def connect(self) -> bool:
+    async def connect(self, timeout: float = 5.0) -> bool:
         if self.writer is not None:
             await self.disconnect()
 
-        self.reader, self.writer = await asyncio.open_connection(self.address, self.port)
-        await self.__send(Packet(_RequestId.DEFAULT, _PacketType.LOGIN_REQUEST, self.password))
-
         try:
-            packet = await self.__receive_packet()
-            success = packet.request_id != _RequestId.LOGIN_FAIL
-        except Exception:
-            success = False
+            self.reader, self.writer = await asyncio.wait_for(
+                asyncio.open_connection(self.address, self.port), timeout=timeout
+            )
+            await asyncio.wait_for(
+                self.__send(
+                    Packet(_RequestId.DEFAULT, _PacketType.LOGIN_REQUEST, self.password)
+                ),
+                timeout=timeout,
+            )
 
-        if not success:
+            try:
+                packet = await asyncio.wait_for(
+                    self.__receive_packet(), timeout=timeout
+                )
+                success = packet.request_id != _RequestId.LOGIN_FAIL
+            except Exception:
+                success = False
+
+            if not success:
+                await self.disconnect()
+            return success
+        except (asyncio.TimeoutError, Exception):
+            if self.logger:
+                self.logger.warning(
+                    f"Rcon connection to {self.address}:{self.port} timed out or failed."
+                )
             await self.disconnect()
-        return success
+            return False
 
     async def disconnect(self):
         if self.writer is not None:
@@ -73,7 +94,7 @@ class AsyncRconConnection:
 
     async def __receive(self, length: int) -> bytes:
         assert self.reader is not None
-        data = b''
+        data = b""
         while len(data) < length:
             chunk = await self.reader.read(length - len(data))
             if not chunk:
@@ -83,25 +104,34 @@ class AsyncRconConnection:
 
     async def __receive_packet(self) -> Packet:
         length_bytes = await self.__receive(4)
-        length = struct.unpack('<i', length_bytes)[0]
+        length = struct.unpack("<i", length_bytes)[0]
         data = await self.__receive(length)
 
-        request_id = struct.unpack('<i', data[0:4])[0]
-        packet_type = struct.unpack('<i', data[4:8])[0]
-        payload = data[8:-2].decode('utf8')
+        request_id = struct.unpack("<i", data[0:4])[0]
+        packet_type = struct.unpack("<i", data[4:8])[0]
+        payload = data[8:-2].decode("utf8")
 
         return Packet(request_id, packet_type, payload)
 
-    async def send_command(self, command: str, max_retry_time: int = 3) -> Optional[str]:
+    async def send_command(
+        self, command: str, max_retry_time: int = 3
+    ) -> Optional[str]:
         async with self.lock:
             for _ in range(max_retry_time):
                 try:
-                    await self.__send(Packet(_RequestId.DEFAULT, _PacketType.COMMAND_REQUEST, command))
-                    await self.__send(Packet(_RequestId.DEFAULT, _PacketType.ENDING_PACKET, 'lol'))
-                    result = ''
+                    await self.__send(
+                        Packet(_RequestId.DEFAULT, _PacketType.COMMAND_REQUEST, command)
+                    )
+                    await self.__send(
+                        Packet(_RequestId.DEFAULT, _PacketType.ENDING_PACKET, "lol")
+                    )
+                    result = ""
                     while True:
                         packet = await self.__receive_packet()
-                        if packet.payload == f"Unknown request {hex(_PacketType.ENDING_PACKET)[2:]}":
+                        if (
+                            packet.payload
+                            == f"Unknown request {hex(_PacketType.ENDING_PACKET)[2:]}"
+                        ):
                             break
                         result += packet.payload
                     return result
@@ -118,7 +148,7 @@ class AsyncRconConnection:
 
 
 async def main():
-    rcon = AsyncRconConnection('mod.staringplanet.top', 51003, 'password')
+    rcon = AsyncRconConnection("mod.staringplanet.top", 51003, "password")
     print("Connecting RCON server...")
     ok = await rcon.connect()
 
@@ -138,10 +168,8 @@ async def main():
         print("Failed to connect RCON server!")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         sys.exit()
-
-
