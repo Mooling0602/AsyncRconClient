@@ -28,10 +28,10 @@ def on_load(server: PluginServerInterface, _prev_module):
     pass
 
 
-def main(server: PluginServerInterface):
+async def main(server: PluginServerInterface):
     if rcon.rcon_task:
         response = await rcon_client.client.send_command("list")
-        server.logger.info(f"[Test Response] \n{test}")
+        server.logger.info(f"[Response] \n{test}")
 
     # Following is some safe way to control rcon client
     server.execute_command("@rcon disconnect", ConsoleCommandSource) # Disconnect rcon client if you want.
