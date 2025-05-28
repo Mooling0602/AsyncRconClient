@@ -37,3 +37,9 @@ def main(server: PluginServerInterface):
     server.execute_command("@rcon disconnect", ConsoleCommandSource) # Disconnect rcon client if you want.
     server.execute_command("@rcon connect", ConsoleCommandSource) # Reconnect rcon client if you want.
 ```
+
+## License & Credits
+This project is licensed under the GPL-3.0 License.
+
+Used projects:
+- [RconConnection](https://docs.mcdreforged.com/zh-cn/latest/code_references/minecraft_tools.html#mcdreforged.minecraft.rcon.rcon_connection.RconConnection): LGPL-3.0
