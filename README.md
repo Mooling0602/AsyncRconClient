@@ -38,6 +38,10 @@ def main(server: PluginServerInterface):
     server.execute_command("@rcon connect", ConsoleCommandSource) # Reconnect rcon client if you want.
 ```
 
+If you want to connect or disconnect rcon client by directly call the functions in async_rcon.entry, you should read source code carefully because it may dangerous. 
+
+And if any bugs found plz issue them, I'll be glad to fix.
+
 ## License & Credits
 This project is licensed under the GPL-3.0 License.
 
