@@ -1,0 +1,39 @@
+# AsyncRconClient
+A simple async rcon client.
+
+## Usage
+Run `async_rcon/__init__.py` directly.
+
+### With MCDR
+Install plugin from release.
+> After plugin submitted to MCDR PluginCatalogue, you can install by  `!!MCDR plg install async_rcon [--confirm]`
+
+Rcon client will start automatically when plugin is loading.
+
+Use `@rcon <command>` to execute commands and get responses from target rcon server.
+
+Use `@rcon connect` to start rcon client, use  `@rcon disconnect` to close it.
+
+Use `@rcon reload` to reload plugin, equal to `!!MCDR plg reload async_rcon`
+
+## API
+Can be imported in MCDR plugins. If you want to use this module without MCDR, you should just import from `async_rcon/__init__.py`. 
+```python
+import async_rcon.entry as rcon
+
+from mcdreforged.api.all import *
+
+
+def on_load(server: PluginServerInterface, _prev_module):
+    pass
+
+
+def main(server: PluginServerInterface):
+    if rcon.rcon_task:
+        response = await rcon_client.client.send_command("list")
+        server.logger.info(f"[Test Response] \n{test}")
+
+    # Following is some safe way to control rcon client
+    server.execute_command("@rcon disconnect", ConsoleCommandSource) # Disconnect rcon client if you want.
+    server.execute_command("@rcon connect", ConsoleCommandSource) # Reconnect rcon client if you want.
+```

@@ -1,0 +1,6 @@
+test_plugin.py
+*.mcdr
+*.pyz
+.vscode/
+.venv/
+__pycache__/
