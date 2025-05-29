@@ -148,7 +148,7 @@ class AsyncRconConnection:
 
 
 async def main():
-    rcon = AsyncRconConnection("mod.staringplanet.top", 51003, "password")
+    rcon = AsyncRconConnection("example.com", 25575, "password")
     print("Connecting RCON server...")
     ok = await rcon.connect()
 
