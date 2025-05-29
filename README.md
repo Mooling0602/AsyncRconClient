@@ -48,3 +48,7 @@ This project is licensed under the GPL-3.0 License.
 
 Used projects:
 - [RconConnection](https://docs.mcdreforged.com/zh-cn/latest/code_references/minecraft_tools.html#mcdreforged.minecraft.rcon.rcon_connection.RconConnection): LGPL-3.0
+> A built-in module in MCDReforged.
+
+Thanks the following projects for documentation support
+- [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Mooling0602/AsyncRconClient)
