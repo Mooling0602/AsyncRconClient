@@ -1,6 +1,6 @@
 {
     "id": "async_rcon",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "name": "AsyncRconClient",
     "description": {
         "en_us": "A simple async rcon client.",

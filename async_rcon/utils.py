@@ -1,87 +1,41 @@
-import asyncio
-import time
+from functools import wraps
+from inspect import iscoroutinefunction as iscorofunc
 
-from typing import Optional
+from async_rcon.lock import CustomLock
 
 
-class CustomLock:
-    def __init__(self, block: bool, id: Optional[str | list[str]] = None) -> None:
-        self.block: bool = block
-        self.id: list[str] = []
-        if not id:
-            return
-        match id:
-            case id if isinstance(id, str):
-                self.id.append(id)
-            case id if isinstance(id, list):
-                for i in id:
-                    if i not in self.id:
-                        self.id.append(i)
-        self._condition = asyncio.Condition()
-        self._last_add_time: float | None = None
+def with_lock(lock: CustomLock | None, option_id: str):
+    def decorator(func):
+        @wraps(func)
+        async def async_wrapper(_lock=lock, _option_id=option_id, *args, **kwargs):
+            if _lock is None:
+                _lock = CustomLock(True, _option_id)
+            else:
+                wait: bool = await _lock.wait_for_lock_release_async(_option_id)
+                if not wait:
+                    return
+                start: bool = await _lock.add_async(_option_id, 0.1, True)
+                if not start:
+                    return
+            result = await func(*args, **kwargs)
+            _lock.remove(_option_id)
+            return result
 
-    def add(self, id: str | list[str], rate_limit: float = 0.01) -> bool:
-        _current_time = time.monotonic()
-        if self._last_add_time:
-            if _current_time - self._last_add_time < rate_limit:
-                return False
-        self._last_add_time = _current_time
-        match id:
-            case id if isinstance(id, list):
-                if self.id != []:
-                    for i in id:
-                        if i not in self.id:
-                            self.id.append(i)
-                else:
-                    self.id = id
-            case id if isinstance(id, str):
-                if id not in self.id:
-                    self.id.append(id)
-        return True
+        @wraps(func)
+        def wrapper(_lock=lock, _option_id=option_id, *args, **kwargs):
+            if _lock is None:
+                _lock = CustomLock(True, _option_id)
+            else:
+                wait: bool = _lock.wait_for_lock_release(_option_id)
+                if not wait:
+                    return
+                start: bool = _lock.add(_option_id, 0.1)
+                if not start:
+                    return
+            result = func(*args, **kwargs)
+            _lock.remove(_option_id)
+            return result
 
-    async def add_asyncly(
-        self, id: str | list[str], rate_limit: float = 0.1, retry: bool = True
-    ) -> bool:
-        result: bool = self.add(id, rate_limit)
-        if not result:
-            await asyncio.sleep(rate_limit)
-            result: bool = self.add(id, rate_limit)
-        return result
+        return async_wrapper if iscorofunc(func) else wrapper
 
-    def remove(self, id: str | list[str]):
-        if self.id == []:
-            return
-        match id:
-            case id if isinstance(id, list):
-                for i in id:
-                    if i in self.id:
-                        self.id.remove(i)
-            case id if isinstance(id, str):
-                if id in self.id:
-                    self.id.remove(id)
-
-    def unlock(self):
-        self.block = False
-        asyncio.create_task(self._notify_all())
-
-    def lock(self):
-        self.block = True
-
-    async def _notify_all(self):
-        async with self._condition:
-            self._condition.notify_all()
-
-    async def wait_for_lock_release(self, option_id: str, timeout: float = 5.0) -> bool:
-        try:
-            async with asyncio.timeout(timeout):
-                async with self._condition:
-                    await self._condition.wait_for(
-                        lambda: not self.block
-                        or not (
-                            option_id in self.id
-                            or any(i.startswith(f"{option_id}.") for i in self.id)
-                        )
-                    )
-                return True
-        except TimeoutError:
-            return False
+    return decorator
