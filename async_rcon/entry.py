@@ -1,6 +1,6 @@
 import asyncio
-from asyncio import Task
 
+from asyncio import Task
 from mcdreforged.api.all import (
     CommandContext,
     CommandSource,
@@ -8,9 +8,9 @@ from mcdreforged.api.all import (
     QuotableText,
     SimpleCommandBuilder,
 )
-
 from async_rcon import AsyncRconConnection
 from async_rcon.config import PluginConfig, load_config
+from async_rcon.utils import CustomLock
 
 builder = SimpleCommandBuilder()
 client: AsyncRconConnection | None = None
@@ -18,15 +18,17 @@ rcon_task: Task | None = None
 rcon_lock: bool = False
 rcon_offline: bool = False
 config: PluginConfig | None = None
+lock: CustomLock | None = None
 
 
 async def on_load(server: PluginServerInterface, _prev_module):
-    global rcon_task, config, client
+    global rcon_task, config, client, lock
     builder.arg("command", QuotableText)
     builder.register(server)
     config = await load_config(server)
     mcdr_config = server.get_mcdr_config()
     assert config is not None
+    lock = CustomLock(True, "client_option")
     client = AsyncRconConnection(
         address=config.custom_server.host,
         port=config.custom_server.port,
@@ -55,6 +57,7 @@ async def on_load(server: PluginServerInterface, _prev_module):
         server.logger.error(
             "Cannot connect to rcon server, please check your config file."
         )
+    lock.remove("client_option")
 
 
 async def start_client() -> bool:
@@ -123,14 +126,42 @@ async def on_command_node_rcon_command(src: CommandSource, ctx: CommandContext):
 
 @builder.command("@rcon disconnect")
 async def on_command_node_rcon_disconnect(src: CommandSource, ctx: CommandContext):
-    global rcon_lock
+    option_id: str = "client_option.disconnect"
+    global rcon_lock, lock
+    if lock is None:
+        lock = CustomLock(True, option_id)
+    else:
+        wait = await lock.wait_for_lock_release(option_id)
+        if not wait:
+            src.reply("Can't get lock released, exiting...")
+            return
+        src.reply('Get lock released, continue.')
+        start: bool = await lock.add_asyncly(option_id, 0.1, True)
+        if not start:
+            src.reply('Failed to add option_id to lock, exiting...')
+            return
     await close_client()
     rcon_lock = True
     src.reply("Rcon client closed.")
+    lock.remove(option_id)
 
 
 @builder.command("@rcon connect")
 async def on_command_node_rcon_connect(src: CommandSource, ctx: CommandContext):
+    global lock
+    option_id: str = "client_option.connect"
+    if lock is None:
+        lock = CustomLock(True, option_id)
+    else:
+        wait = await lock.wait_for_lock_release(option_id)
+        if not wait:
+            src.reply("Can't get lock released, exiting...")
+            return
+        src.reply("Get lock released, continue.")
+        start = await lock.add_asyncly(option_id, 0.1, True)
+        if not start:
+            src.reply("Failed to add option_id to lock, exiting...")
+            return
     rcon_status = await start_client()
     if rcon_status:
         src.reply("Rcon client started!")
@@ -139,3 +170,13 @@ async def on_command_node_rcon_connect(src: CommandSource, ctx: CommandContext):
             src.reply("Rcon client is maybe already running!")
         else:
             src.reply("Rcon server is offline, please check your config!")
+    lock.remove(option_id)
+
+
+@builder.command('@rcon debug lock_status')
+async def on_command_node_rcon_debug_lock_status(src: CommandSource, ctx: CommandContext):
+    if lock:
+        if lock.block:
+            src.reply(f"Locking: {lock.id}")
+            return
+    src.reply("Not locking.")
