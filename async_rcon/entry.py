@@ -1,6 +1,4 @@
-import asyncio
-
-from asyncio import Task
+from asyncio import AbstractEventLoop, Task
 from mcdreforged.api.all import (
     CommandContext,
     CommandSource,
@@ -19,16 +17,18 @@ rcon_lock: bool = False
 rcon_offline: bool = False
 config: PluginConfig | None = None
 lock: CustomLock | None = None
+loop: AbstractEventLoop | None = None
 
 
 async def on_load(server: PluginServerInterface, _prev_module):
-    global rcon_task, config, client, lock
+    global rcon_task, config, client, lock, loop
     builder.arg("command", QuotableText)
     builder.register(server)
     config = await load_config(server)
     mcdr_config = server.get_mcdr_config()
     assert config is not None
     lock = CustomLock(True, "client_option")
+    loop = server.get_event_loop()
     client = AsyncRconConnection(
         address=config.custom_server.host,
         port=config.custom_server.port,
@@ -61,8 +61,8 @@ async def on_load(server: PluginServerInterface, _prev_module):
 
 
 async def start_client() -> bool:
-    global rcon_offline
-    if not client:
+    global rcon_offline, loop
+    if not client or not loop:
         return False
     global rcon_task
     if not rcon_task:
@@ -72,19 +72,20 @@ async def start_client() -> bool:
             return False
         else:
             rcon_offline = False
-        await client.disconnect()
-        rcon_task = asyncio.create_task(client.connect())
+            await client.disconnect()
+        rcon_task = loop.create_task(client.connect())
         return True
     else:
         return False
 
 
 async def close_client():
-    if not client:
+    global loop
+    if not client or not loop:
         return
     global rcon_task
     if rcon_task:
-        await client.disconnect()
+        loop.create_task(client.disconnect())
         rcon_task.cancel()
         await rcon_task
         rcon_task = None
@@ -135,10 +136,10 @@ async def on_command_node_rcon_disconnect(src: CommandSource, ctx: CommandContex
         if not wait:
             src.reply("Can't get lock released, exiting...")
             return
-        src.reply('Get lock released, continue.')
+        src.reply("Get lock released, continue.")
         start: bool = await lock.add_asyncly(option_id, 0.1, True)
         if not start:
-            src.reply('Failed to add option_id to lock, exiting...')
+            src.reply("Failed to add option_id to lock, exiting...")
             return
     await close_client()
     rcon_lock = True
@@ -173,8 +174,10 @@ async def on_command_node_rcon_connect(src: CommandSource, ctx: CommandContext):
     lock.remove(option_id)
 
 
-@builder.command('@rcon debug lock_status')
-async def on_command_node_rcon_debug_lock_status(src: CommandSource, ctx: CommandContext):
+@builder.command("@rcon debug lock_status")
+async def on_command_node_rcon_debug_lock_status(
+    src: CommandSource, ctx: CommandContext
+):
     if lock:
         if lock.block:
             src.reply(f"Locking: {lock.id}")
