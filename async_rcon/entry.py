@@ -9,11 +9,13 @@ from mcdreforged.api.all import (
 )
 
 from async_rcon import AsyncRconConnection
+from async_rcon.commands import get_command_root_node
 from async_rcon.config import PluginConfig, load_config
 from async_rcon.lock import CustomLock
 from async_rcon.utils import with_lock
 
 builder = SimpleCommandBuilder()
+get_node = get_command_root_node
 client: AsyncRconConnection | None = None
 rcon_task: Task | None = None
 rcon_lock: bool = False
@@ -24,13 +26,21 @@ loop: AbstractEventLoop | None = None
 
 
 async def on_load(server: PluginServerInterface, _prev_module):
-    global rcon_task, config, client, lock, loop
+    global rcon_task, config, client, loop
     builder.arg("command", QuotableText)
+    root_command_node = get_node(server, "arcon")
+    server.logger.info(f"Registering command root node: {root_command_node}")
+    builder.command(f"{root_command_node} <command>", on_command_node_rcon_command)
+    builder.command(f"{root_command_node} connect", on_command_node_rcon_connect)
+    builder.command(f"{root_command_node} disconnect", on_command_node_rcon_disconnect)
+    builder.command(
+        f"{root_command_node} debug lock status",
+        on_command_node_rcon_debug_lock_status,
+    )
     builder.register(server)
     config = await load_config(server)
     mcdr_config = server.get_mcdr_config()
     assert config is not None
-    lock = CustomLock(True, "client_option")
     loop = server.get_event_loop()
     client = AsyncRconConnection(
         address=config.custom_server.host,
@@ -60,7 +70,6 @@ async def on_load(server: PluginServerInterface, _prev_module):
         server.logger.error(
             "Cannot connect to rcon server, please check your config file."
         )
-    lock.remove("client_option")
 
 
 async def start_client() -> bool:
@@ -103,7 +112,6 @@ async def on_unload(server: PluginServerInterface):
         rcon_task = None
 
 
-@builder.command("@rcon <command>")
 async def on_command_node_rcon_command(src: CommandSource, ctx: CommandContext):
     if not client:
         src.reply("Rcon error: client is not initialized!")
@@ -129,7 +137,6 @@ async def on_command_node_rcon_command(src: CommandSource, ctx: CommandContext):
 
 
 @with_lock(lock, "client_option.disconnect")
-@builder.command("@rcon disconnect")
 async def on_command_node_rcon_disconnect(src: CommandSource, ctx: CommandContext):
     global rcon_lock
     await close_client()
@@ -138,7 +145,6 @@ async def on_command_node_rcon_disconnect(src: CommandSource, ctx: CommandContex
 
 
 @with_lock(lock, "client_option.connect")
-@builder.command("@rcon connect")
 async def on_command_node_rcon_connect(src: CommandSource, ctx: CommandContext):
     rcon_status = await start_client()
     if rcon_status:
@@ -150,7 +156,6 @@ async def on_command_node_rcon_connect(src: CommandSource, ctx: CommandContext):
             src.reply("Rcon server is offline, please check your config!")
 
 
-@builder.command("@rcon debug lock_status")
 async def on_command_node_rcon_debug_lock_status(
     src: CommandSource, ctx: CommandContext
 ):
